@@ -1,0 +1,159 @@
+* {
+  box-sizing: border-box;
+}
+
+body {
+  margin: 0;
+  min-width: 320px;
+  background: #f5f7fc;
+  color: #202840;
+  font-family: Arial, sans-serif;
+  line-height: 1.5;
+}
+
+.header {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 20px;
+  padding: 22px 6%;
+  background: #fff;
+  border-bottom: 1px solid #e4e8f1;
+}
+
+.brand {
+  color: #3448b8;
+  font-size: 21px;
+  font-weight: 700;
+  text-decoration: none;
+}
+
+.header-label {
+  color: #68728a;
+  font-size: 14px;
+}
+
+.main {
+  max-width: 1120px;
+  margin: 0 auto;
+  padding: 64px 24px;
+}
+
+.eyebrow {
+  color: #5264cd;
+  font-size: 12px;
+  font-weight: 700;
+  letter-spacing: 2px;
+}
+
+h1 {
+  margin: 12px 0;
+  font-size: clamp(30px, 5vw, 44px);
+  line-height: 1.15;
+}
+
+.intro {
+  margin-bottom: 36px;
+  color: #68728a;
+  font-size: 17px;
+}
+
+.count {
+  color: #68728a;
+  font-size: 14px;
+}
+
+.conference-grid {
+  display: grid;
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+  gap: 24px;
+}
+
+.conference-card {
+  padding: 28px;
+  background: #fff;
+  border: 1px solid #e4e8f1;
+  border-radius: 18px;
+  box-shadow: 0 8px 24px rgb(32 40 64 / 4%);
+  overflow-wrap: anywhere;
+}
+
+.badge {
+  display: inline-block;
+  padding: 5px 12px;
+  border-radius: 20px;
+  background: #edf0ff;
+  color: #4255bd;
+  font-size: 12px;
+  font-weight: 700;
+}
+
+.conference-card h2 {
+  margin: 20px 0 12px;
+  font-size: 24px;
+}
+
+.description {
+  color: #68728a;
+}
+
+.details {
+  display: grid;
+  gap: 16px;
+  margin: 24px 0 0;
+  padding-top: 20px;
+  border-top: 1px solid #edf0f6;
+}
+
+.details dt {
+  margin-bottom: 4px;
+  color: #68728a;
+  font-size: 12px;
+}
+
+.details dd {
+  margin: 0;
+  font-size: 15px;
+  font-weight: 600;
+}
+
+.notice {
+  padding: 24px;
+  border: 1px solid #e4e8f1;
+  border-radius: 14px;
+  background: #fff;
+}
+
+.error {
+  color: #902d39;
+  border-color: #f0c9ce;
+  background: #fff5f6;
+}
+
+button {
+  padding: 11px 18px;
+  border: 0;
+  border-radius: 8px;
+  background: #4255bd;
+  color: #fff;
+  font: inherit;
+  cursor: pointer;
+}
+
+button:hover {
+  background: #34449c;
+}
+
+@media (max-width: 700px) {
+  .conference-grid {
+    grid-template-columns: 1fr;
+  }
+
+  .header-label {
+    display: none;
+  }
+
+  .main {
+    padding-top: 36px;
+  }
+}
