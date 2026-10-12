@@ -1,16 +1,104 @@
-# React + Vite
+# Science Conferences Platform — frontend
 
-This template provides a minimal setup to get React working in Vite with HMR and some ESLint rules.
+React + Vite: список конференций, форма подачи доклада и просмотр заявок.
 
-Currently, two official plugins are available:
+## Разработка на Windows
 
-- [@vitejs/plugin-react](https://github.com/vitejs/vite-plugin-react/blob/main/packages/plugin-react) uses [Oxc](https://oxc.rs)
-- [@vitejs/plugin-react-swc](https://github.com/vitejs/vite-plugin-react/blob/main/packages/plugin-react-swc) uses [SWC](https://swc.rs/)
+Нужны Node.js 24 и работающий бэкенд на https://localhost:7239.
 
-## React Compiler
+```bash
+npm ci
+npm run dev
+```
 
-The React Compiler is not enabled on this template because of its impact on dev & build performances. To add it, see [this documentation](https://react.dev/learn/react-compiler/installation).
+Открыть http://127.0.0.1:5173. Vite пересылает `/api` в локальный ASP.NET.
+Самоподписанный сертификат разрешён только в локальном dev-proxy (`secure: false`).
+Другой сервер: изменить `target` в `vite.config.js`.
+Опционально можно задать `VITE_API_BASE_URL` при сборке; по умолчанию запросы идут на тот же origin.
 
-## Expanding the ESLint configuration
+## Docker: запуск всего проекта на Linux / Arch Linux
 
-If you are developing a production application, we recommend using TypeScript with type-aware lint rules enabled. Check out the [TS template](https://github.com/vitejs/vite/tree/main/packages/create-vite/template-react-ts) for information on how to integrate TypeScript and [`typescript-eslint`](https://typescript-eslint.io) in your project.
+Нужны Docker Engine с запущенным daemon, Docker Compose >= 2.17 и доступ к интернету
+для скачивания исходников и образов. На Windows нужен Docker Desktop в режиме Linux containers.
+Node.js, .NET и PostgreSQL на компьютере отдельно не требуются.
+
+Из корня conf-frontend:
+
+```bash
+docker compose up --build -d
+```
+
+Открыть http://localhost (порт 80). Первая сборка может занять несколько минут.
+Если порт 80 занят, в Linux/Git Bash: `FRONTEND_PORT=8081 docker compose up --build -d`.
+
+Compose поднимает PostgreSQL, одноразовую задачу миграций, ASP.NET и Nginx.
+Бэкенд собирается из публичного conf-backend, зафиксированного на коммите
+`b1ba1621066ceba5fefdc302861b379120b84d6b`; соседняя копия репозитория не требуется.
+Для обновления бэкенда нужно заменить SHA в docker-compose.yml после проверки совместимости.
+
+В исходном csproj EF Tools 10.0.12 указан вместе с net8.0 и Npgsql 8.0.11.
+Контейнерная сборка удаляет этот инструментальный пакет, добавляет EF Design 8.0.11
+и dotnet-ef 8.0.11. Исходный репозиторий бэкенда не изменяется.
+Из существующих миграций строится efbundle: он создаёт таблицы до запуска API.
+При первом GET /api/conferences текущий контроллер добавляет две конференции.
+PostgreSQL хранит данные в именованном volume между перезапусками.
+
+Проверка:
+
+```bash
+docker compose ps -a
+docker compose logs --tail=100 migrate backend frontend
+curl http://localhost/api/conferences
+curl http://localhost/api/talk-submissions
+```
+
+`migrate` должен завершиться с кодом 0 — это нормально. Остальные сервисы продолжают работать.
+Остановка без удаления БД: `docker compose down`.
+Не используйте `docker compose down -v`, если хотите сохранить заявки.
+
+В контейнерах API работает по HTTP внутри сети Compose; Nginx принимает запросы на порту 80.
+Это конфигурация локального показа, без публичного HTTPS и авторизации.
+Порты PostgreSQL и API наружу не публикуются.
+Демонстрационный пароль можно заменить через POSTGRES_PASSWORD до первого запуска.
+Смена переменной у уже созданного volume сама пароль БД не меняет.
+
+Лимиты памяти работающих сервисов: БД 256 МБ, API 512 МБ, Nginx 128 МБ;
+задача миграций — до 512 МБ. Лимиты не относятся к сборке.
+При нехватке памяти собирайте последовательно:
+
+```bash
+docker compose build backend
+docker compose build frontend
+docker compose up -d --no-build
+```
+
+## Форма и API
+
+POST /api/talk-submissions отправляет ровно `{ title, abstract, speakerId, trackId }`.
+Тема и ID обязательны после удаления пробелов по краям. Тезисы необязательны.
+Начальный ID — speaker-1. Секции: track-backend, track-frontend, track-devops.
+Последние два ID следуют соглашению из задания; текущий сервер хранит их как строки,
+без проверки существования секции. При введении внешних ключей нужен список секций из API.
+
+Только ответ 201 закрывает форму и показывает уведомление об успехе.
+При ошибке поля сохраняются, повторный клик во время отправки блокируется.
+Нативный dialog поддерживает фокус, Tab, Escape и возврат фокуса к кнопке открытия.
+Escape и закрытие блокируются до завершения запроса.
+Просмотр заявок вызывает GET /api/talk-submissions; открытый список обновляется
+после отправки. Это демонстрация списка, не защищённая панель модератора.
+
+## Проверка перед сдачей
+
+```bash
+npm run lint
+npm run build
+```
+
+1. Открыть форму, проверить обязательную тему и каждую секцию.
+2. Отправить заявку; увидеть сообщение со статусом Submitted.
+3. Нажать «Посмотреть поданные заявки» и найти её в списке.
+4. Перезагрузить страницу и открыть список — заявка остаётся в БД.
+5. Остановить бэкенд, отправить форму — ошибка видна, поля не очищены.
+
+В среде подготовки прошли сборка, ESLint и проверки компонента в JSDOM с подменёнными ответами API: JSON запроса, обязательные поля, защита от повторной отправки, обработка 201/400/200, сохранение полей при ошибке, обновление списка заявок. Реальный localhost пользователя недоступен,
+Docker Engine отсутствует: полный контейнерный запуск нужно проверить до защиты.
