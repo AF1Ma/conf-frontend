@@ -1,8 +1,8 @@
 import { useEffect, useState } from 'react';
 import './App.css';
+import TalkSubmission from './components/TalkSubmission';
+import { apiRequest } from './api';
 
-// Если у твоего бэкенда другой порт, поменяй его здесь.
-const API_URL = 'https://localhost:7239/api/conferences';
 
 function formatDate(value) {
   const date = new Date(value);
@@ -31,15 +31,7 @@ export default function App() {
 
     async function loadConferences() {
       try {
-        const response = await fetch(API_URL, {
-          signal: controller.signal,
-        });
-
-        if (!response.ok) {
-          throw new Error(`Сервер вернул ошибку HTTP ${response.status}`);
-        }
-
-        const data = await response.json();
+        const data = await apiRequest('/conferences', { signal: controller.signal });
 
         if (!Array.isArray(data)) {
           throw new Error('Неверный формат ответа: ожидался массив конференций');
@@ -77,6 +69,8 @@ export default function App() {
         <p className="intro">
           Находите интересные события и знакомьтесь с новыми идеями.
         </p>
+
+        <TalkSubmission />
 
         {loading && (
           <p className="notice" role="status">
