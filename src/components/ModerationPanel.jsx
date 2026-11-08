@@ -1,109 +1,90 @@
-import { useEffect, useRef, useState } from 'react';
-import { apiRequest } from '../api';
-import './ModerationPanel.css';
+import { useRef, useState } from 'react';
+import { Check, ClipboardList, RefreshCw, X } from 'lucide-react';
+import { apiRequest, errorMessage } from '../api';
+import { formatDate } from '../dates';
+import { useApiList } from '../hooks';
 
-const STATUS_LABELS = {
-  Submitted: 'На рассмотрении',
-  Approved: 'Одобрен',
-  Rejected: 'Отклонён',
-};
+const LABELS = { Submitted: 'На модерации', Approved: 'Одобрен', Rejected: 'Отклонён' };
+const PATH = '/talk-submissions';
+const FILTERS = [
+  ['all', 'Все'],
+  ['Submitted', 'На модерации'],
+  ['Approved', 'Принятые'],
+  ['Rejected', 'Отклонённые'],
+];
 
-export default function ModerationPanel() {
-  const [items, setItems] = useState([]);
-  const [loading, setLoading] = useState(true);
-  const [error, setError] = useState('');
+export default function ModerationPanel({ token, notify }) {
+  const { items, loading, error, reload, updateItems } = useApiList(PATH, token);
   const [pending, setPending] = useState({});
   const [errors, setErrors] = useState({});
-  const [notice, setNotice] = useState('');
-  const [attempt, setAttempt] = useState(0);
+  const [filter, setFilter] = useState('all');
   const inFlight = useRef(new Set());
+  const submitted = items.filter((item) => item.status === 'Submitted').length;
+  const visible = items.filter((item) => filter === 'all' || item.status === filter)
+    .sort((left, right) => String(right.submittedAt ?? '').localeCompare(String(left.submittedAt ?? '')));
 
-  useEffect(() => {
-    const controller = new AbortController();
-    apiRequest('/talk-submissions', { signal: controller.signal })
-      .then((data) => {
-        if (!Array.isArray(data)) throw new Error('Сервер вернул неверный формат списка заявок.');
-        if (!controller.signal.aborted) setItems(data);
-      })
-      .catch((err) => {
-        if (!controller.signal.aborted) setError(err instanceof TypeError ? 'Не удалось связаться с сервером.' : err.message);
-      })
-      .finally(() => { if (!controller.signal.aborted) setLoading(false); });
-    return () => controller.abort();
-  }, [attempt]);
-
-  async function moderate(id, status) {
+  async function decide(id, status) {
     if (inFlight.current.has(id)) return;
     inFlight.current.add(id);
     setPending((current) => ({ ...current, [id]: status }));
     setErrors((current) => ({ ...current, [id]: '' }));
-    setNotice('');
     try {
-      await apiRequest(`/talk-submissions/${encodeURIComponent(id)}/status`, {
-        method: 'PATCH',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ status }),
+      const result = await apiRequest('/talk-submissions/' + encodeURIComponent(id) + '/status', {
+        token, method: 'PATCH', json: { status },
       });
-      // Update only after the server confirms that the decision was saved.
-      setItems((current) => current.map((item) => item.id === id ? { ...item, status } : item));
-      setNotice(status === 'Approved' ? 'Доклад одобрен. Решение сохранено.' : 'Доклад отклонён. Решение сохранено.');
+      updateItems((current) => current.map((item) => item.id === id
+        ? { ...item, status: result?.submission?.status ?? result?.status ?? status }
+        : item));
+      notify(status === 'Approved' ? 'Доклад принят' : 'Доклад отклонён');
     } catch (err) {
-      setErrors((current) => ({
-        ...current,
-        [id]: err instanceof TypeError
-          ? 'Нет связи с сервером. Обнови список, чтобы проверить, сохранилось ли решение.'
-          : err.message,
-      }));
+      setErrors((current) => ({ ...current, [id]: errorMessage(err) }));
     } finally {
       inFlight.current.delete(id);
       setPending((current) => { const next = { ...current }; delete next[id]; return next; });
     }
   }
 
-  function reload() {
-    setLoading(true);
-    setError('');
-    setErrors({});
-    setNotice('');
-    setAttempt((value) => value + 1);
-  }
-
   return (
-    <section className="moderation" aria-labelledby="moderation-title">
-      <div className="moderation-heading">
-        <div>
-          <p className="eyebrow">ПРОГРАММА КОНФЕРЕНЦИИ</p>
-          <h2 id="moderation-title">Модерация докладов</h2>
-        </div>
-        <button type="button" className="secondary" onClick={reload}
-          disabled={loading || Object.keys(pending).length > 0}>Обновить список</button>
+    <section className="panel list-panel" aria-labelledby="moderation-title">
+      <div className="section-toolbar">
+        <div className="section-title"><h2 id="moderation-title">Заявки спикеров</h2><span className="count-badge">{submitted} на модерации</span></div>
+        <button type="button" className="button secondary compact" disabled={loading || Object.keys(pending).length > 0}
+          onClick={() => { setErrors({}); reload(); }}><RefreshCw size={16} /> Обновить</button>
       </div>
-      <div role="status" aria-live="polite">{notice && <p className="notice success">{notice}</p>}</div>
-      {loading && <p role="status">Загружаем заявки…</p>}
-      {error && <p className="notice error" role="alert">{error}</p>}
-      {!loading && !error && items.length === 0 && <p className="moderation-empty">Поданных докладов пока нет.</p>}
-      {!loading && !error && <div className="moderation-grid">
-        {items.map((item) => (
-          <article className="moderation-card" key={item.id} aria-busy={Boolean(pending[item.id])}>
-            <span className={`moderation-status status-${Object.hasOwn(STATUS_LABELS, item.status) ? item.status : 'unknown'}`}>
-              {STATUS_LABELS[item.status] || 'Статус'} · {item.status}
-            </span>
+      <div className="review-filters" aria-label="Фильтр заявок">
+        {FILTERS.map(([value, label]) => <button type="button" key={value} className="filter-button"
+          aria-pressed={filter === value} onClick={() => setFilter(value)}>{label}</button>)}
+      </div>
+      {loading && <p className="section-body muted" role="status">Загружаем заявки…</p>}
+      {error && <p className="form-alert section-body" role="alert">{error}</p>}
+      {!loading && !error && visible.length === 0 && <div className="empty-state"><ClipboardList size={26} />
+        <h3>{items.length === 0 ? 'Заявок пока нет' : 'Нет заявок с этим статусом'}</h3>
+        <p>{items.length === 0 ? 'Заявки появятся здесь после подачи доклада.' : 'Выбери другой фильтр, чтобы увидеть остальные заявки.'}</p>
+      </div>}
+      <div className="moderation-list">
+        {visible.map((item) => (
+          <article className="review-card" key={item.id} aria-busy={Boolean(pending[item.id])}>
+            <div className="review-meta">
+              <span className={'status-badge ' + (item.status === 'Approved' ? 'approved' : item.status === 'Rejected' ? 'rejected' : 'submitted')}>
+                <span /> {LABELS[item.status] ?? item.status}
+              </span>
+              <span className="muted">{formatDate(item.submittedAt)}</span>
+            </div>
             <h3>{item.title}</h3>
-            <p className="moderation-abstract">{item.abstract || 'Тезисы не указаны.'}</p>
-            {item.status === 'Submitted' && <div className="moderation-actions">
-              <button type="button" className="approve" disabled={Boolean(pending[item.id])}
-                onClick={() => moderate(item.id, 'Approved')}>
-                {pending[item.id] === 'Approved' ? 'Сохраняем…' : 'Одобрить'}
+            <p className="abstract">{item.abstract || 'Краткие тезисы не указаны.'}</p>
+            <div className="review-ids"><span>Спикер · {item.speakerId}</span><span>Секция · {item.trackId}</span></div>
+            {item.status === 'Submitted' && <div className="review-actions">
+              <button type="button" className="button approve" disabled={Boolean(pending[item.id])} onClick={() => decide(item.id, 'Approved')}>
+                <Check size={17} /> {pending[item.id] === 'Approved' ? 'Сохраняем…' : 'Принять'}
               </button>
-              <button type="button" className="reject" disabled={Boolean(pending[item.id])}
-                onClick={() => moderate(item.id, 'Rejected')}>
-                {pending[item.id] === 'Rejected' ? 'Сохраняем…' : 'Отклонить'}
+              <button type="button" className="button reject" disabled={Boolean(pending[item.id])} onClick={() => decide(item.id, 'Rejected')}>
+                <X size={17} /> {pending[item.id] === 'Rejected' ? 'Сохраняем…' : 'Отклонить'}
               </button>
             </div>}
-            {errors[item.id] && <p className="notice error" role="alert">{errors[item.id]}</p>}
+            {errors[item.id] && <p className="form-alert" role="alert">{errors[item.id]}</p>}
           </article>
         ))}
-      </div>}
+      </div>
     </section>
   );
 }

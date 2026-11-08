@@ -1,17 +1,14 @@
-# Docker Compose >= 2.17 (dockerfile_inline). Backend source is pinned for reproducibility.
+# Docker Compose >= 2.17 (dockerfile_inline). Keep conf-backend beside conf-frontend.
 x-backend: &backend
-  image: science-conf-backend:checkpoint
+  image: science-conf-backend:final
   build:
-    context: https://github.com/AF1Ma/conf-backend.git#b1ba1621066ceba5fefdc302861b379120b84d6b
+    context: ${BACKEND_CONTEXT:-../conf-backend}
     dockerfile_inline: |
       FROM mcr.microsoft.com/dotnet/sdk:8.0 AS build
       WORKDIR /src
       COPY . .
       WORKDIR /src/ConferencePlatform.Api
-      # Upstream uses EF Tools 10 with net8. Align build-time tooling with Npgsql 8.
-      RUN dotnet remove package Microsoft.EntityFrameworkCore.Tools \
-          && dotnet add package Microsoft.EntityFrameworkCore.Design --version 8.0.11 \
-          && dotnet tool install --tool-path /tools dotnet-ef --version 8.0.11
+      RUN dotnet tool install --tool-path /tools dotnet-ef --version 8.0.26
       RUN dotnet publish -c Release -o /out \
           && /tools/dotnet-ef migrations bundle --configuration Release --output /out/efbundle
       FROM mcr.microsoft.com/dotnet/aspnet:8.0
@@ -21,8 +18,11 @@ x-backend: &backend
       ENV ASPNETCORE_URLS=http://+:8080
       EXPOSE 8080
       CMD ["dotnet", "ConferencePlatform.Api.dll"]
-  environment: &backend-env
+  environment:
     ASPNETCORE_ENVIRONMENT: Production
+    OrganizerAccount__Email: ${ORGANIZER_EMAIL:-}
+    OrganizerAccount__Password: ${ORGANIZER_PASSWORD:-}
+    Auth__SigningKey: ${AUTH_SIGNING_KEY:-}
     ConnectionStrings__DefaultConnection: Host=db;Port=5432;Database=science_conf_db;Username=postgres;Password=${POSTGRES_PASSWORD:-conference_local_demo}
 
 services:
@@ -57,7 +57,7 @@ services:
       migrate:
         condition: service_completed_successfully
     healthcheck:
-      test: ["CMD", "curl", "-fsS", "http://localhost:8080/api/talk-submissions"]
+      test: ["CMD", "curl", "-fsS", "http://localhost:8080/health"]
       interval: 10s
       timeout: 5s
       retries: 12
